@@ -1,17 +1,29 @@
+_DEFAULT_SSM_PATH_: str = '/service/token-dispenser'  # ssm parameter store default path for TDS ARN
 import boto3
 import json
 import re
+from botocore.exceptions import ClientError
 lambda_client = boto3.client('lambda')
 ssm = boto3.client('ssm')
-_DEFAULT_SSM_PATH_: str = '/service/token-dispenser'  # ssm parameter store default path for TDS ARN
+
 
 def get_parameter_by_name(name: str, with_decryption:bool = False)->str:
-    if not name.endswith('/'):  # Check if it's a specific parameter name
-        response = ssm.get_parameter(
-            Name=name,
-            WithDecryption=with_decryption
-        )
-    return response['Parameter']['Value']
+    try:
+        if not name.endswith('/'):  # Check if it's a specific parameter name
+            response = ssm.get_parameter(
+                Name=name,
+                WithDecryption=with_decryption
+            )
+        return response['Parameter']['Value']
+    except KeyError:
+        print(f"Missing 'Parameter' or 'Value' key with name: {name} response:{response} "
+                       f"with_decryption:{with_decryption}")
+        raise KeyError(f"Missing 'Parameter' or 'Value' key with name: {name} response:{response} "
+                       f"with_decryption:{with_decryption}")
+    except Exception as e:  # Catch any other error.
+        print(f"An unexpected error occurred during get_parameter: name: {name} response:{response} "
+                       f"with_decryption:{with_decryption}")
+        raise e
 
 
 def get_parameters_by_path(path:str, with_decryption=True):
@@ -54,10 +66,16 @@ def get_parameters_by_path(path:str, with_decryption=True):
                 break
 
         return parameters
-
+    except(ssm.exceptions.InternalServerError, ssm.exceptions.InvalidFilterKey, ssm.exceptions.InvalidFilterOption,
+           ssm.exceptions.InvalidFilterValue, ssm.exceptions.InvalidKeyId, ssm.exceptions.InvalidNextToken) \
+            as ssm_exception:
+        print(f'ssm get_parameters_by_path error with path: {path} with_decryption:{with_decryption} '
+              f'error: {ssm_exception}')
+        raise ssm_exception
     except Exception as e:
-        print(f"Error retrieving parameters from path '{path}': {e}")
-        return None
+        print(f'Unexpected error in get_parameters_by_path with path: {path} with_decryption:{with_decryption} '
+              f'error: {e}')
+        raise e
 
 
 def invoke_lambda(input_params_json, lambda_arn):
@@ -77,7 +95,7 @@ def invoke_lambda(input_params_json, lambda_arn):
     try:
         input_params = json.loads(input_params_json)
     except json.JSONDecodeError:
-        return "Error: Invalid JSON"
+        return f'Error: Invalid JSON : {input_params_json}'
 
     try:
         response = lambda_client.invoke(
@@ -106,16 +124,15 @@ def validate_input(client_id:str, minimum_alive_secs:int) -> str:
     if client_id and not pattern.match(client_id):
         err_msg='client_id must be between length 3-32 with pattern [a-zA-Z0-9]{3,32}'
 
-    if minimum_alive_secs is not None and (not minimum_alive_secs.is_integer()):
+    if minimum_alive_secs is not None and (not isinstance(minimum_alive_secs, int)):
         err_msg = f'{err_msg}\n Minimum alive interval must be an integer'
 
-    if ((minimum_alive_secs is not None and minimum_alive_secs.is_integer()) and
-            (minimum_alive_secs > 3300 or minimum_alive_secs < 0)):
+    if isinstance(minimum_alive_secs, int) and (minimum_alive_secs > 3300 or minimum_alive_secs < 0):
         err_msg = f'{err_msg}\n Minimum alive interval must be an integer between 1 and 3300'
     return err_msg
 
 
-def get_tds_arn(ssm_name:str) -> (str, str):
+def get_tds_arn(ssm_name:str) -> str:
     """
     :param ssm_name:
     :return:
@@ -129,21 +146,21 @@ def get_tds_arn(ssm_name:str) -> (str, str):
         params = get_parameters_by_path(path=ssm_name, with_decryption=False)
         size = params.__len__()
         if size < 1:
-            err_msg = f"Not able to find tds arn for: {ssm_name}"
+            raise ValueError(f"Not able to find tds arn for: {ssm_name}")
         elif size > 1:
-            err_msg = f"Found more than one tds arn for: {ssm_name}"
+            raise ValueError(f"Found more than one tds arn for: {ssm_name}")
         elif size == 1:
             items_list = list(params.items())
             first_item = items_list[0]
             first_key, tds_arn = first_item
-        return err_msg, tds_arn
+        return tds_arn
     else:
         # if user provides a name, the code trusts it as a full name and let system fail if
         # provided name is not correct
-        return err_msg, get_parameter_by_name(name=ssm_name, with_decryption=False)
+        return get_parameter_by_name(name=ssm_name, with_decryption=False)
 
-def crete_err(err_code:int , err_msg:str) -> str:
-    return json.dumps(dict(statusCode=err_code, body=err_msg))
+def create_err(err_msg:str) -> str:
+    return json.dumps(dict(body=err_msg))
 
 
 def get_token(client_id:str, minimum_alive_secs:int = 300, token_dispenser_arn_ssm_key:str = None) -> str:
@@ -165,14 +182,15 @@ def get_token(client_id:str, minimum_alive_secs:int = 300, token_dispenser_arn_s
         Returns empty dict if no parameters found on the path.
             The return string could be a string showing error message
     """
-    # Validate inputs
+    # Validate inputs.   minimum_alive_secs has a default value and won't be None
     err_msg = validate_input(client_id=client_id, minimum_alive_secs = minimum_alive_secs)
     if not err_msg.strip() == '':
-        return crete_err(err_code=422, err_msg=err_msg)
+        return create_err(err_msg=err_msg)
     # TDS stands for Token Dispenser Service (it is a lambda)
-    err_msg, tds_arn = get_tds_arn(token_dispenser_arn_ssm_key)
-    if err_msg:
-        return crete_err(err_code=500, err_msg=err_msg)
+    try:
+        tds_arn = get_tds_arn(token_dispenser_arn_ssm_key)
+    except ValueError as ve:
+        return create_err(ve.args[0])
 
     # construct calling to TDS
     resp:str = invoke_lambda(input_params_json=
@@ -187,11 +205,12 @@ if __name__ == "__main__":
     region = "us-west-2" # Replace with your region.
 
     try:
-        # resp_str: str = get_token(client_id='davidyen', minimum_alive_secs=300, token_dispenser_arn_ssm_key='/service/token-dispenser/bla')
-        # print(f'calling tds with response : {resp_str}')
-
-        resp_str: str = get_token(client_id='davidyen', minimum_alive_secs=300)
+        # /service/token-dispenser/sndbx is the real sndbx SSM name
+        resp_str: str = get_token(client_id='davidyen', minimum_alive_secs=120.00, token_dispenser_arn_ssm_key='/service/token-dispenser/sndbx')
         print(f'calling tds with response : {resp_str}')
+
+        # resp_str: str = get_token(client_id='davidyen', minimum_alive_secs=300)
+        # print(f'calling tds with response : {resp_str}')
 
     except Exception as e:
         print(f"An unexpected error occurred: {e}")

@@ -1,15 +1,15 @@
 [project]
-name = "token-dispenser-client-lib"
+name = "token-dispenser-client"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "IandA",email = "IandA@jpl.nasa.gov"}
+    {name = "IandA",email = "podaac-ia@jpl.nasa.gov"}
 ]
 readme = "README.md"
 
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.9"
 boto3 = "^1.37.3"
 
 [tool.poetry.dev-dependencies]
@@ -18,4 +18,3 @@ pytest = "8.3.4"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
