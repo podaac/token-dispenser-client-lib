@@ -49,9 +49,8 @@ class TestTokenDispenserClient(unittest.TestCase):
             'FunctionError': 'Handled'
         }
 
-        result = invoke_lambda('{"param": "value"}', 'test_lambda_arn')
-        self.assertTrue(result.find('Error: Lambda invocation failed:') != -1)
-
+        with self.assertRaises(Exception):
+            invoke_lambda('{"param": "value"}', 'test_lambda_arn')
 
     def test_validate_input(self):
         # Test valid input

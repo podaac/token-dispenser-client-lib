@@ -73,11 +73,11 @@ def invoke_lambda(input_params_json, lambda_arn):
         return payload
     except ClientError as client_err:
         logger.exception("Lambda invokation error occured %s",client_err)
-        return f"Error: Lambda invocation failed: {client_err}"
+        raise client_err
     except Exception as general_err:  # pylint: disable=broad-exception-caught
         logger.exception("An unexpected general error occurred "
                          "while invoking TDS: %s", general_err)
-        return f"Error: Lambda invocation failed: {general_err}"
+        raise general_err
 
 
 def validate_input(client_id: str, minimum_alive_secs: int) -> List[str]:
