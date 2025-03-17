@@ -174,8 +174,4 @@ def get_token(client_id: str, minimum_alive_secs: int = 300,
     }
     json_data = json.dumps(data)
     resp: str = invoke_lambda(input_params_json=json_data, lambda_arn=tds_arn)
-    # construct calling to TDS
-    # resp: str = invoke_lambda(input_params_json=json.dumps(
-    #     dict(client_id=client_id, minimum_alive_secs=minimum_alive_secs)),
-    #     lambda_arn=tds_arn)
     return resp
