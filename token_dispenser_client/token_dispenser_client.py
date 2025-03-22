@@ -21,13 +21,9 @@ def get_parameter_by_name(name: str) -> str:
 
     Returns: tds arn as string
     """
-    response = None
-    if not name.endswith('/'):  # Check if it's a specific parameter name
-        response = ssm.get_parameter(
-            Name=name
-        )
-    else:
-        raise ValueError(f"Invalid parameter name ending with slash: {name}")
+    response = ssm.get_parameter(
+        Name=name
+    )
     logger.debug('get_parameter_by_name with name: %s, response: %s', name, response)
     if 'Parameter' not in response:
         raise ValueError(f"Error: Parameter not found for name: {name}")

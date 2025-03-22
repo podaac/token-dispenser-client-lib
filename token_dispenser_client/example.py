@@ -20,7 +20,7 @@ def main():
         #  or None parameters in the path.
 
         # resp: dict = get_token(client_id='davidyen', minimum_alive_secs=120,
-        # token_dispenser_arn_ssm_key='/service/token-dispenser/sndbx')
+        #                        token_dispenser_arn_ssm_key='/service/token-dispenser/sndbx')
         # print(f'calling tds with response : {resp}')
         # print(f'calling tds with sm_token : {resp["sm_token"]}')
 
