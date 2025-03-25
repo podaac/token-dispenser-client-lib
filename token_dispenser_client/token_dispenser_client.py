@@ -21,13 +21,18 @@ def get_parameter_by_name(name: str) -> str:
 
     Returns: tds arn as string
     """
-    response = ssm.get_parameter(
-        Name=name
-    )
-    logger.debug('get_parameter_by_name with name: %s, response: %s', name, response)
-    if 'Parameter' not in response:
-        raise ValueError(f"Error: Parameter not found for name: {name}")
-    return response['Parameter']['Value']
+    try:
+        response = ssm.get_parameter(
+            Name=name
+        )
+        logger.debug('get_parameter_by_name with name: %s, response: %s', name, response)
+        if 'Parameter' not in response:
+            raise ValueError(f"Error: Parameter not found for name: {name}")
+        return response['Parameter']['Value']
+    except ssm.exceptions.ParameterNotFound as parameter_not_found_err:
+        logger.exception("Parameter not found for given name: %s "
+                         "exception: %s", name, parameter_not_found_err)
+        raise parameter_not_found_err
 
 
 def invoke_lambda(input_params_json, lambda_arn):
@@ -68,7 +73,7 @@ def validate_input(client_id: str, minimum_alive_secs: int) -> List[str]:
     """ validate the user inputs """
     err_msgs = []
     if client_id is None or client_id.strip() == '' or (not isinstance(client_id, str)):
-        err_msgs.append('Error: client_id is required as a string')
+        err_msgs.append('client_id is required as a string')
 
     if minimum_alive_secs is not None and (not isinstance(minimum_alive_secs, int)):
         err_msgs.append('Minimum alive interval, if provided, must be an integer')
@@ -81,7 +86,6 @@ def get_tds_arn(ssm_name: str) -> str:
     :return:
     arn:str     : ARN of TDS lambda
     """
-    response = None  # Initialize response to None
     if not ssm_name:
         ssm_name = _DEFAULT_SSM_PATH_
         response = ssm.get_parameters_by_path(

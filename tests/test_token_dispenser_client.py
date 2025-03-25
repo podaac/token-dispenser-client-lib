@@ -64,7 +64,7 @@ class TestTokenDispenserClient(unittest.TestCase):
 
         # Test invalid client_id and minimum_alive_secs
         result = validate_input('', 'not_an_int')
-        self.assertIn('Error: client_id is required as a string', result)
+        self.assertIn('client_id is required as a string', result)
         self.assertIn('Minimum alive interval, if provided, must be an integer', result)
 
         # Test invalid client_id pattern. However, this library
