@@ -26,8 +26,6 @@ def get_parameter_by_name(name: str) -> str:
             Name=name
         )
         logger.debug('get_parameter_by_name with name: %s, response: %s', name, response)
-        if 'Parameter' not in response:
-            raise ValueError(f"Error: Parameter not found for name: {name}")
         return response['Parameter']['Value']
     except ssm.exceptions.ParameterNotFound as parameter_not_found_err:
         logger.exception("Parameter not found for given name: %s "
