@@ -1,0 +1,22 @@
+[project]
+name = "token-dispenser-client"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "IandA",email = "podaac-ia@jpl.nasa.gov"}
+]
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = "^3.9"
+boto3 = "^1.37.18"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "8.3.5"
+flake8 = "^7.1.2"
+pylint = "^2.12.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
