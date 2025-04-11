@@ -13,26 +13,6 @@ _DEFAULT_SSM_PATH_: str = '/service/token-dispenser'
 logger = logging.getLogger(__name__)
 
 
-def get_parameter_by_name(name: str) -> str:
-    """
-
-    Args:
-        name: the ssm name point to TDS arn
-
-    Returns: tds arn as string
-    """
-    try:
-        response = ssm.get_parameter(
-            Name=name
-        )
-        logger.debug('get_parameter_by_name with name: %s, response: %s', name, response)
-        return response['Parameter']['Value']
-    except ssm.exceptions.ParameterNotFound as parameter_not_found_err:
-        logger.exception("Parameter not found for given name: %s "
-                         "exception: %s", name, parameter_not_found_err)
-        raise parameter_not_found_err
-
-
 def invoke_lambda(input_params_json, lambda_arn):
     """
     Invokes an AWS Lambda function with input parameters from a JSON string.
@@ -78,40 +58,36 @@ def validate_input(client_id: str, minimum_alive_secs: int) -> List[str]:
     return err_msgs
 
 
-def get_tds_arn(ssm_name: str) -> str:
+def get_tds_arn() -> str:
     """
     :param ssm_name:
     :return:
     arn:str     : ARN of TDS lambda
     """
-    if not ssm_name:
-        ssm_name = _DEFAULT_SSM_PATH_
-        response = ssm.get_parameters_by_path(
-            Path=ssm_name,
-            Recursive=True,
-            MaxResults=2,
-        )
-        logger.debug('Found ssm param values by default ssm path:%s response:%s',
+    ssm_name = _DEFAULT_SSM_PATH_
+    response = ssm.get_parameters_by_path(
+        Path=ssm_name,
+        Recursive=True,
+        MaxResults=2,
+    )
+    logger.debug('Found ssm param values by default ssm path:%s response:%s',
                      ssm_name, response)
-        result_count = len(response.get('Parameters', []))
-        if result_count == 2:
-            raise ValueError(f"Found multiple values in path: {ssm_name}. Please provide "
-                             f"specific ssm name which points to the TDS lambda ARN. "
-                             f"Not path")
-        if result_count == 0:
-            raise ValueError(f"Found no value in path: {ssm_name}. Please provide "
-                             f"specific ssm name which points to the TDS lambda ARN. "
-                             f"Not path")
-        logger.debug('Found single ssm param value by default ssm path')
-        param = response.get('Parameters', []).pop(0)
-        return param['Value']
-    # if user provides a name, the code trusts it as a full name and let system fail if
-    # provided name is not correct
-    return get_parameter_by_name(name=ssm_name)
+    result_count = len(response.get('Parameters', []))
+    if result_count == 2:
+        raise ValueError(f"Found multiple values in path: {ssm_name}. Please provide "
+                         f"specific ssm name which points to the TDS lambda ARN. "
+                         f"Not path")
+    if result_count == 0:
+        raise ValueError(f"Found no value in path: {ssm_name}. Please provide "
+                         f"specific ssm name which points to the TDS lambda ARN. "
+                         f"Not path")
+    logger.debug('Found single ssm param value by default ssm path')
+    param = response.get('Parameters', []).pop(0)
+    return param['Value']
 
 
-def get_token(client_id: str, minimum_alive_secs: int = 300,
-              token_dispenser_arn_ssm_key: str = None) -> dict:
+def get_token(client_id: str, minimum_alive_secs: int = None,
+              lambda_arn: str = None) -> dict:
     """
     Retrieves parameters from AWS Systems Manager Parameter Store by path.
 
@@ -121,7 +97,7 @@ def get_token(client_id: str, minimum_alive_secs: int = 300,
         If there is a cached token and the cached token has expiration time
         (current_time - expired_at)  shorter than the provided value,
         the token will be re-generated. Otherwise, a cached token will be returned.
-        token_dispenser_arn_ssm_key (str, optional): If not provided, the program
+        lambda_arn (str, optional): If not provided, the program
         logic will /service/token-dispenser as root name space to get parameters.
         If only single value is returned, the returned value will be used as
         token dispenser arn.  Furthermore, the code will make a call to the token dispenser
@@ -141,11 +117,14 @@ def get_token(client_id: str, minimum_alive_secs: int = 300,
         raise ValueError(err_msgs)
 
     # TDS stands for Token Dispenser Service (it is a lambda)
-    tds_arn = get_tds_arn(token_dispenser_arn_ssm_key)
+    tds_arn = lambda_arn if lambda_arn else get_tds_arn()
+
     data = {
-        "client_id": client_id,
-        "minimum_alive_secs": minimum_alive_secs
+        "client_id": client_id
     }
+    if lambda_arn is not None:
+        data['minimum_alive_secs'] = minimum_alive_secs
+
     json_data = json.dumps(data)
     resp: str = invoke_lambda(input_params_json=json_data, lambda_arn=tds_arn)
     return json.loads(resp)
